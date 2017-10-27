@@ -1,0 +1,47 @@
+// The combination of 1 and 2 will work in Gradle 4.0 but not 4.1+
+// Running gradlew clean distro will call 'main:clean' after distro
+
+group = 'mycompany'
+version = '1.0'
+apply plugin: 'java'
+
+dependencies {
+    compile 'mycompany:lib:1.0'
+}
+
+// 1. Propagate clean task to sub-builds
+gradle.includedBuilds.each {
+    tasks.getByName('clean').dependsOn(it.task(':clean'))
+}
+
+def assembleScripts = tasks.create('assemble-scripts', Zip) {    
+    from 'scripts'
+    classifier = 'scripts'
+}
+
+// 2. Add a scripts artifact
+artifacts {
+    def af = add('runtimeElements', assembleScripts.archivePath) {
+        classifier = 'scripts'
+        type = 'scripts'
+        extension = 'zip'
+        builtBy(assembleScripts)
+    }
+}
+
+
+task('distro') { t ->
+    configurations['runtimeElements'].artifacts.all { af ->
+        t.dependsOn af.buildDependencies
+    }
+    doLast {
+        def distroDir = new File(project.buildDir, "distributions/${project.name}-distro")
+        project.delete(distroDir)
+        project.copy {
+            into distroDir
+            configurations['runtimeElements'].artifacts.each { from it.file }
+            from configurations['runtimeClasspath']
+        }
+    }
+}
+
